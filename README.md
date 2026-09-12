@@ -74,6 +74,15 @@ remains mathematically correct. Finite complex orders are supported in symbolic
 closed forms when their assumptions make the expression unambiguous; numerical
 quadrature currently requires a real order.
 
+Concrete negative integer orders are constructed as definite integrals from
+zero and simplified by SymPy. Therefore elementary antiderivatives remain
+elementary:
+
+```python
+FractionalDerivative(sp.exp(2*x), x, -1).doit()
+# exp(2*x)/2 - 1/2
+```
+
 For the power rule \(x^m\), the defining integral at the fixed lower bound zero
 requires \(\operatorname{Re}(m)>-1\). A power known not to satisfy that
 condition raises `ValueError` instead of returning a value obtained only by

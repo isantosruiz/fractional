@@ -151,7 +151,7 @@ class FractionalDerivative(sp.Expr):
     1.11361910109605
 
     6. A negative order represents a fractional integral:
-    >>> FractionalDerivative(sp.exp(x), x, -1).doit().expand(func=True)
+    >>> FractionalDerivative(sp.exp(x), x, -1).doit()
     exp(x) - 1
 
     See Also
@@ -269,6 +269,15 @@ class FractionalDerivative(sp.Expr):
                 return sp.Derivative(expr, (x, alpha), evaluate=False)
             if alpha.is_negative is not True:
                 return self
+            order = -alpha
+            t = sp.Dummy('t', positive=True)
+            integral = sp.Integral(
+                (x - t)**(order - 1) * expr.xreplace({x: t}),
+                (t, 0, x),
+            ) / sp.gamma(order)
+            if alpha.is_number:
+                return sp.simplify(integral.doit(**hints))
+            return integral
 
         # A constant c has D^alpha(c) = c*x^(-alpha)/Gamma(1-alpha).
         if not expr.has(x):

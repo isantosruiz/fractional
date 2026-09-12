@@ -41,7 +41,7 @@ def main():
     assert power == 8 * x ** sp.Rational(3, 2) / (3 * sp.sqrt(sp.pi))
     assert sp.simplify(composite - (power + exponential + sine)) == 0
     assert integer_order == 2 * sp.exp(2 * x)
-    assert sp.simplify(sp.hyperexpand(first_integral) - (sp.exp(2*x) - 1)/2) == 0
+    assert first_integral == (sp.exp(2*x) - 1)/2
 
     # The half-derivative of exp(2x) also has a closed form involving erf.
     exponential_closed_form = (

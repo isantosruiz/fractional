@@ -142,13 +142,23 @@ def test_negative_integer_orders_use_definite_integrals_from_zero():
     sine_integral = FractionalDerivative(sp.sin(3*x), x, -1).doit()
     cosine_integral = FractionalDerivative(sp.cos(3*x), x, -1).doit()
 
-    assert sp.simplify(sp.hyperexpand(exponential_integral) - (sp.exp(2*x) - 1)/2) == 0
-    assert sp.simplify(sp.hyperexpand(sine_integral) - (1 - sp.cos(3*x))/3) == 0
-    assert sp.simplify(sp.hyperexpand(cosine_integral) - sp.sin(3*x)/3) == 0
+    assert exponential_integral == (sp.exp(2*x) - 1)/2
+    assert sine_integral == (1 - sp.cos(3*x))/3
+    assert cosine_integral == sp.sin(3*x)/3
+
+    second_exponential_integral = FractionalDerivative(sp.exp(2*x), x, -2).doit()
+    second_sine_integral = FractionalDerivative(sp.sin(3*x), x, -2).doit()
+    assert second_exponential_integral == (sp.exp(2*x) - 1 - 2*x)/4
+    assert second_sine_integral == x/3 - sp.sin(3*x)/9
 
     n = sp.Symbol('n', integer=True, negative=True)
     symbolic_integral = FractionalDerivative(sp.exp(x), x, n).doit()
+    assert symbolic_integral.has(sp.Integral)
     assert sp.simplify(sp.hyperexpand(symbolic_integral.subs(n, -1)) - (sp.exp(x) - 1)) == 0
+
+    arbitrary = sp.Function('f')
+    unevaluated = FractionalDerivative(arbitrary(x), x, -2).doit()
+    assert unevaluated.has(sp.Integral)
 
 
 def test_fractional_derivative_exponential_rl_lower_bound_zero():
