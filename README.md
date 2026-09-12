@@ -1,10 +1,11 @@
 # Fractional 🧠📊
 
-A native, high-precision symbolic Python package extending **SymPy** to compute fractional derivatives and integrals using the **Riemann-Liouville** formulation (with a lower bound of a=0).
+A native, high-precision symbolic Python package extending **SymPy** to compute fractional derivatives and integrals using the **Riemann-Liouville** formulation. The lower bound `x0` is configurable and defaults to zero.
 
 ## Features
 - **Pure Symbolic Matching (`.doit()`)**: Computes analytical exact fractional derivatives for power functions (\(x^m\), including negative exponents), exponentials (\(e^{bx}\)) using the confluent hypergeometric function (₁F₁), and trigonometric functions (\(\sin(wx), \cos(wx)\)) using generalized hypergeometric functions (₁F₂).
-- **Negative Orders**: Interprets \(D^{-\beta}_{0+}\) as the Riemann-Liouville fractional integral \(I^\beta_{0+}\), symbolically and numerically.
+- **Configurable Lower Bound**: Accepts `x0` as the lower terminal while preserving `x0=0` as the backward-compatible default.
+- **Negative Orders**: Interprets \(D^{-\beta}_{x_0+}\) as the Riemann-Liouville fractional integral \(I^\beta_{x_0+}\), symbolically and numerically.
 - **Linearity & Constants Preservation**: Handles sums, scalar factors, and arbitrary constants.
 - **Precision-Controlled Numerical Fallback**: Evaluates smooth expressions without a symbolic rule directly from the Riemann-Liouville definition using adaptive `mpmath` quadrature. It supports both `.eval_at(...)` and SymPy's `.subs(...).evalf(...)` workflow.
 
@@ -44,13 +45,21 @@ fd = FractionalDerivative(x**2 + sp.sin(x), x, 0.5)
 print(fd.doit())
 ```
 
-For a non-integer order \(\alpha\), the exponential rule respects the fixed
-lower bound at zero:
+Pass `x0` as a fourth argument or keyword to choose a different lower bound:
+
+```python
+first_integral = FractionalDerivative(sp.exp(2*x), x, -1, x0=1)
+print(first_integral.doit())
+# exp(2*x)/2 - exp(2)/2
+```
+
+For a non-integer order \(\alpha\), the exponential rule respects the selected
+lower bound:
 
 \[
-D_{0+}^{\alpha} e^{bx}
-= \frac{x^{-\alpha}}{\Gamma(1-\alpha)}
-{}_1F_1\left(1;1-\alpha;bx\right).
+D_{x_0+}^{\alpha} e^{bx}
+= \frac{e^{b x_0}(x-x_0)^{-\alpha}}{\Gamma(1-\alpha)}
+{}_1F_1\left(1;1-\alpha;b(x-x_0)\right).
 \]
 
 The simpler expression \(b^\alpha e^{bx}\) belongs to a different choice of
@@ -62,8 +71,8 @@ For real orders, a positive value represents a derivative, zero is the identity,
 and a negative value represents a fractional integral:
 
 \[
-D^{-\beta}_{0+}f(x)=I^\beta_{0+}f(x)
-=\frac{1}{\Gamma(\beta)}\int_0^x(x-t)^{\beta-1}f(t)\,dt,
+D^{-\beta}_{x_0+}f(x)=I^\beta_{x_0+}f(x)
+=\frac{1}{\Gamma(\beta)}\int_{x_0}^x(x-t)^{\beta-1}f(t)\,dt,
 \qquad \beta>0.
 \]
 
@@ -75,16 +84,16 @@ closed forms when their assumptions make the expression unambiguous; numerical
 quadrature currently requires a real order.
 
 Concrete negative integer orders are constructed as definite integrals from
-zero and simplified by SymPy. Therefore elementary antiderivatives remain
+`x0` and simplified by SymPy. Therefore elementary antiderivatives remain
 elementary:
 
 ```python
-FractionalDerivative(sp.exp(2*x), x, -1).doit()
-# exp(2*x)/2 - 1/2
+FractionalDerivative(sp.exp(2*x), x, -1, x0=1).doit()
+# exp(2*x)/2 - exp(2)/2
 ```
 
-For the power rule \(x^m\), the defining integral at the fixed lower bound zero
-requires \(\operatorname{Re}(m)>-1\). A power known not to satisfy that
+For the shifted power rule \((x-x_0)^m\), the defining integral at the lower
+terminal requires \(\operatorname{Re}(m)>-1\). A power known not to satisfy that
 condition raises `ValueError` instead of returning a value obtained only by
 analytic continuation. When the integrality of a symbolic order is unknown,
 closed forms with singular integer parameters are deliberately left
@@ -92,22 +101,22 @@ unevaluated.
 
 ## Numerical Fallback
 
-When no symbolic rule matches, evaluate at a positive real point with the
-requested number of decimal digits:
+When no symbolic rule matches, evaluate at a real point greater than `x0` with
+the requested number of decimal digits:
 
 ```python
-fd = FractionalDerivative(sp.sin(x**2), x, sp.Rational(1, 2))
+fd = FractionalDerivative(sp.sin(x**2), x, sp.Rational(1, 2), x0=sp.Rational(1, 4))
 
 print(fd.eval_at(1, 30))
-# 1.11361910109605500220019376399
+# 1.11563736176290459323947882831
 
 print(fd.subs(x, 1).evalf(30))
-# 1.11361910109605500220019376399
+# 1.11563736176290459323947882831
 ```
 
 For positive orders, the numerical fallback uses the equivalent Caputo integral
 together with the lower-boundary terms required by the Riemann-Liouville
 definition. For negative orders, it evaluates the fractional integral directly.
-It currently requires a finite real order and a positive real evaluation point;
-positive derivative orders also require finite initial derivatives at the lower
-bound.
+It currently requires a finite real order, a finite real `x0`, and a real
+evaluation point strictly greater than `x0`; positive derivative orders also
+require finite initial derivatives at the lower bound.

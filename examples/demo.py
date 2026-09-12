@@ -6,10 +6,10 @@ import sympy as sp
 from fractional import FractionalDerivative
 
 
-def fractional_derivative(expr, x, alpha):
+def fractional_derivative(expr, x, alpha, x0=0):
     """Evaluate and display one symbolic fractional derivative."""
-    result = FractionalDerivative(expr, x, alpha).doit()
-    print(f"\nD^{alpha} of {expr}:")
+    result = FractionalDerivative(expr, x, alpha, x0=x0).doit()
+    print(f"\nD^{alpha} of {expr}, with x0={x0}:")
     sp.pprint(result)
     return result
 
@@ -35,6 +35,12 @@ def main():
 
     # Negative orders are Riemann-Liouville fractional integrals.
     first_integral = fractional_derivative(sp.exp(2 * x), x, sp.Integer(-1))
+    custom_integral = fractional_derivative(
+        sp.exp(2 * x),
+        x,
+        sp.Integer(-1),
+        x0=1,
+    )
 
     # Basic symbolic checks.
     assert constant == 1 / sp.sqrt(sp.pi * x)
@@ -42,6 +48,7 @@ def main():
     assert sp.simplify(composite - (power + exponential + sine)) == 0
     assert integer_order == 2 * sp.exp(2 * x)
     assert first_integral == (sp.exp(2*x) - 1)/2
+    assert custom_integral == (sp.exp(2*x) - sp.exp(2))/2
 
     # The half-derivative of exp(2x) also has a closed form involving erf.
     exponential_closed_form = (

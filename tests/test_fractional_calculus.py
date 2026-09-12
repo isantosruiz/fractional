@@ -5,22 +5,22 @@ from sympy.functions.special.hyper import hyper
 from fractional import FractionalDerivative
 
 
-def rl_half_from_definition(expr, x):
+def rl_half_from_definition(expr, x, x0=0):
     """Construct D^(1/2) from the defining Riemann-Liouville integral."""
     t = sp.Symbol('t', positive=True)
     fractional_integral = sp.integrate(
         expr.subs(x, t) / sp.sqrt(x - t),
-        (t, 0, x),
+        (t, x0, x),
     )
     return sp.diff(fractional_integral, x) / sp.sqrt(sp.pi)
 
 
-def rl_integral_from_definition(expr, x, beta):
+def rl_integral_from_definition(expr, x, beta, x0=0):
     """Construct the Riemann-Liouville integral of positive order beta."""
     t = sp.Symbol('t', positive=True)
     return sp.integrate(
         (x - t)**(beta - 1) * expr.subs(x, t),
-        (t, 0, x),
+        (t, x0, x),
     ) / gamma(beta)
 
 
@@ -35,6 +35,28 @@ def test_fractional_derivative_creation():
     assert FractionalDerivative(x**2, x, sp.I).alpha == sp.I
     with pytest.raises(ValueError, match='order must be finite'):
         FractionalDerivative(x**2, x, sp.oo)
+
+
+def test_custom_lower_bound_creation_and_validation():
+    x = sp.Symbol('x')
+    a = sp.Symbol('a', real=True)
+    alpha = sp.Rational(1, 2)
+
+    default = FractionalDerivative(x**2, x, alpha)
+    explicit_zero = FractionalDerivative(x**2, x, alpha, x0=0)
+    custom = FractionalDerivative(x**2, x, alpha, x0=a)
+
+    assert default == explicit_zero
+    assert len(default.args) == 3
+    assert default.x0 == 0
+    assert custom.x0 == a
+    assert custom.args == (x**2, x, alpha, a)
+
+    with pytest.raises(ValueError, match='must not depend on x'):
+        FractionalDerivative(x**2, x, alpha, x0=x + 1)
+    for invalid_x0 in (sp.I, sp.oo, -sp.oo, sp.nan):
+        with pytest.raises(ValueError, match='finite and real'):
+            FractionalDerivative(x**2, x, alpha, x0=invalid_x0)
 
 
 def test_symbolic_integer_order_remains_classical():
@@ -161,6 +183,72 @@ def test_negative_integer_orders_use_definite_integrals_from_zero():
     assert unevaluated.has(sp.Integral)
 
 
+def test_custom_lower_bound_negative_integer_orders():
+    x = sp.Symbol('x', real=True)
+    a = sp.Symbol('a', real=True)
+
+    first = FractionalDerivative(sp.exp(2*x), x, -1, x0=a).doit()
+    second = FractionalDerivative(sp.exp(2*x), x, -2, x0=a).doit()
+    sine = FractionalDerivative(sp.sin(3*x), x, -1, x0=a).doit()
+
+    assert sp.simplify(first - (sp.exp(2*x) - sp.exp(2*a))/2) == 0
+    assert sp.simplify(
+        second
+        - (sp.exp(2*x) - sp.exp(2*a)*(1 + 2*(x - a)))/4
+    ) == 0
+    assert sp.simplify(sine - (sp.cos(3*a) - sp.cos(3*x))/3) == 0
+
+    arbitrary = sp.Function('f')
+    unevaluated = FractionalDerivative(arbitrary(x), x, -1, x0=a).doit()
+    assert unevaluated.has(sp.Integral)
+    integral = next(iter(unevaluated.atoms(sp.Integral)))
+    assert integral.limits[0][1:] == (a, x)
+
+
+def test_custom_lower_bound_fractional_closed_forms():
+    x = sp.Symbol('x', real=True)
+    a = sp.Symbol('a', real=True)
+    alpha = sp.Rational(1, 2)
+    distance = x - a
+
+    constant = FractionalDerivative(2, x, alpha, x0=a).doit()
+    shifted_power = FractionalDerivative(distance**2, x, alpha, x0=a).doit()
+    polynomial = FractionalDerivative(x**2, x, alpha, x0=a).doit()
+    exponential = FractionalDerivative(sp.exp(2*x), x, alpha, x0=a).doit()
+    sine = FractionalDerivative(sp.sin(3*x), x, alpha, x0=a).doit()
+    cosine = FractionalDerivative(sp.cos(3*x), x, alpha, x0=a).doit()
+
+    assert constant == 2 / (sp.sqrt(sp.pi)*sp.sqrt(distance))
+    assert shifted_power == 8*distance**sp.Rational(3, 2) / (3*sp.sqrt(sp.pi))
+    expected_polynomial = (
+        a**2 / (sp.sqrt(sp.pi)*sp.sqrt(distance))
+        + 4*a*sp.sqrt(distance) / sp.sqrt(sp.pi)
+        + 8*distance**sp.Rational(3, 2) / (3*sp.sqrt(sp.pi))
+    )
+    assert sp.simplify(polynomial - expected_polynomial) == 0
+    expected_exponential = (
+        sp.exp(2*a)
+        * distance**(-alpha)
+        / gamma(1 - alpha)
+        * hyper([sp.S.One], [1 - alpha], 2*distance)
+    )
+    assert exponential == expected_exponential
+
+    y = sp.Symbol('y', positive=True)
+    shifted_sine = FractionalDerivative(sp.sin(3*y), y, alpha).doit().subs(
+        y,
+        distance,
+    )
+    shifted_cosine = FractionalDerivative(sp.cos(3*y), y, alpha).doit().subs(
+        y,
+        distance,
+    )
+    assert sine == sp.cos(3*a)*shifted_sine + sp.sin(3*a)*shifted_cosine
+    assert cosine == sp.cos(3*a)*shifted_cosine - sp.sin(3*a)*shifted_sine
+
+    assert FractionalDerivative(x**3, x, 2, x0=a).doit() == 6*x
+
+
 def test_fractional_derivative_exponential_rl_lower_bound_zero():
     x = sp.Symbol('x', positive=True)
     alpha = sp.Rational(1, 2)
@@ -266,14 +354,50 @@ def test_numerical_fallback_for_negative_order(alpha, expected):
     assert abs(fd.subs(x, 1).evalf(40) - expected) < sp.Float('1e-38')
 
 
+@pytest.mark.parametrize(
+    'alpha',
+    (sp.Rational(1, 2), sp.Rational(3, 2), -sp.Rational(1, 2)),
+)
+def test_numerical_fallback_with_custom_lower_bound(alpha):
+    x = sp.Symbol('x', real=True)
+    y = sp.Symbol('y', positive=True)
+    a = sp.Rational(1, 4)
+    point = sp.Integer(1)
+    shifted_point = point - a
+
+    custom = FractionalDerivative(sp.sin(x**2), x, alpha, x0=a)
+    translated = FractionalDerivative(sp.sin((y + a)**2), y, alpha)
+    expected = translated.eval_at(shifted_point, 50)
+
+    assert abs(custom.eval_at(point, 40) - expected) < sp.Float('1e-38')
+    assert abs(custom.subs(x, point).evalf(40) - expected) < sp.Float('1e-38')
+
+    symbolic_a = sp.Symbol('a', real=True)
+    symbolic = FractionalDerivative(sp.sin(x**2), x, alpha, x0=symbolic_a)
+    at_point = symbolic.subs(x, point)
+    assert symbolic_a in at_point.free_symbols
+    assert abs(at_point.subs(symbolic_a, a).evalf(40) - expected) < sp.Float('1e-38')
+
+
 def test_numerical_fallback_domain_errors():
     x = sp.Symbol('x', positive=True)
     fd = FractionalDerivative(sp.sin(x**2), x, sp.Rational(1, 2))
 
-    with pytest.raises(ValueError, match='evaluation point must be positive'):
+    with pytest.raises(ValueError, match='greater than x0'):
         fd.eval_at(0)
-    with pytest.raises(ValueError, match='evaluation point must be positive'):
+    with pytest.raises(ValueError, match='greater than x0'):
         fd.eval_at(-1)
+
+    custom = FractionalDerivative(
+        sp.sin(x**2),
+        x,
+        sp.Rational(1, 2),
+        x0=1,
+    )
+    with pytest.raises(ValueError, match='greater than x0'):
+        custom.eval_at(1)
+    with pytest.raises(ValueError, match='greater than x0'):
+        custom.eval_at(sp.Rational(1, 2))
 
     complex_order = FractionalDerivative(sp.sin(x**2), x, sp.I)
     with pytest.raises(ValueError, match='finite real'):

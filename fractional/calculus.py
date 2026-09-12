@@ -52,19 +52,19 @@ class FractionalDerivative(sp.Expr):
     operator to arbitrary orders. Positive orders represent derivatives and
     negative real orders represent Riemann-Liouville fractional integrals.
 
-    This subroutine uses the **Riemann-Liouville (R-L)** definition with a fixed lower
-    bound at $a = 0$. For a given function $f(x)$ and order $\alpha > 0$ 
+    This subroutine uses the **Riemann-Liouville (R-L)** definition with lower
+    bound $x_0$, which defaults to zero. For a given function $f(x)$ and order $\alpha > 0$
     (where $n = \lceil \alpha \rceil$), the operator is formally defined as:
 
     .. math::
-        D^\alpha f(x) = \frac{1}{\Gamma(n - \alpha)} \frac{d^n}{dx^n} \int_{0}^{x} (x - t)^{n - \alpha - 1} f(t) \, dt
+        D_{x_0+}^\alpha f(x) = \frac{1}{\Gamma(n - \alpha)} \frac{d^n}{dx^n} \int_{x_0}^{x} (x - t)^{n - \alpha - 1} f(t) \, dt
 
     For a negative real order $\alpha=-\beta$, with $\beta>0$, the same
     operator represents the Riemann-Liouville fractional integral:
 
     .. math::
-        D^{-\beta} f(x) = I^\beta f(x)
-        = \frac{1}{\Gamma(\beta)} \int_0^x (x-t)^{\beta-1}f(t)\,dt
+        D_{x_0+}^{-\beta} f(x) = I_{x_0+}^\beta f(x)
+        = \frac{1}{\Gamma(\beta)} \int_{x_0}^x (x-t)^{\beta-1}f(t)\,dt
 
     Where $\Gamma(z)$ is the Euler Gamma function, which extends factorials to real numbers.
 
@@ -72,38 +72,35 @@ class FractionalDerivative(sp.Expr):
     --------------------
     1. **Memory Effect (Non-Locality):** The derivative at point $x$ does not depend 
        solely on the local neighborhood of $x$, but on the entire history of the function 
-       over the closed interval $[0, x]$.
+       over the closed interval $[x_0, x]$.
     2. **Linearity:** It satisfies $D^\alpha [c_1 f(x) + c_2 g(x)] = c_1 D^\alpha f(x) + c_2 D^\alpha g(x)$.
     3. **Derivative of a Constant:** Unlike classical calculus, the fractional derivative 
        of a constant **is not zero** under the Riemann-Liouville framework. 
-       For $f(x) = 1$, the operator yields $D^\alpha(1) = \frac{x^{-\alpha}}{\Gamma(1-\alpha)}$.
+       For $f(x) = 1$, the operator yields
+       $D_{x_0+}^\alpha(1) = \frac{(x-x_0)^{-\alpha}}{\Gamma(1-\alpha)}$.
 
     Implemented Closed Forms (Symbolic Mapping)
     ===========================================
     To guarantee analytical exact solutions inside SymPy, the ``.doit()`` method uses
     pattern matching based on the following foundational rules:
 
-    * **Powers ($x^m$):**
+    * **Shifted powers ($(x-x_0)^m$):**
       .. math::
-          D^\alpha (x^m) = \frac{\Gamma(m+1)}{\Gamma(m + 1 - \alpha)} x^{m - \alpha}
+          D_{x_0+}^\alpha ((x-x_0)^m) = \frac{\Gamma(m+1)}{\Gamma(m + 1 - \alpha)} (x-x_0)^{m - \alpha}
       The classical integral additionally requires convergence at the lower
       bound (for example, $\operatorname{Re}(m)>-1$).
 
     * **Exponentials ($e^{bx}$):**
       .. math::
-          D^\alpha (e^{bx}) = \frac{x^{-\alpha}}{\Gamma(1-\alpha)}
-          \,{}_1F_1\left(1; 1-\alpha; bx\right)
-      for non-integer $\alpha$. The boundary contribution at $x=0$ is essential;
+          D_{x_0+}^\alpha (e^{bx}) = \frac{e^{b x_0}(x-x_0)^{-\alpha}}{\Gamma(1-\alpha)}
+          \,{}_1F_1\left(1; 1-\alpha; b(x-x_0)\right)
+      for non-integer $\alpha$. The boundary contribution at $x=x_0$ is essential;
       consequently, $b^\alpha e^{bx}$ is not the Riemann-Liouville derivative
-      with the fixed lower bound used by this class.
+      with the finite lower bound used by this class.
 
     * **Trigonometric Functions ($\sin(wx)$ and $\cos(wx)$):**
-      Due to the lower bound at $a=0$, analytical solutions require the use 
-      of Generalized Hypergeometric Functions $_1F_2$:
-      .. math::
-          D^\alpha (\sin(wx)) = \frac{w x^{1-\alpha}}{\Gamma(2-\alpha)} \, _1F_2\left(1; 1-\frac{\alpha}{2}, \frac{3}{2}-\frac{\alpha}{2}; -\frac{w^2x^2}{4}\right)
-      .. math::
-          D^\alpha (\cos(wx)) = \frac{x^{-\alpha}}{\Gamma(1-\alpha)} \, _1F_2\left(1; \frac{1}{2}-\frac{\alpha}{2}, 1-\frac{\alpha}{2}; -\frac{w^2x^2}{4}\right)
+      Analytical solutions use the corresponding zero-based $_1F_2$ formulas
+      after translating the variable by $x_0$.
 
     Parameters
     ==========
@@ -117,6 +114,9 @@ class FractionalDerivative(sp.Expr):
         Abstract and complex symbolic orders are accepted, but symbolic closed
         forms that are singular at integer parameters require sufficient
         assumptions.
+    x0 : Expr or number, optional
+        The lower terminal of the Riemann-Liouville operator. It must not depend
+        on ``x`` and defaults to zero.
 
     Examples
     ========
@@ -154,16 +154,21 @@ class FractionalDerivative(sp.Expr):
     >>> FractionalDerivative(sp.exp(x), x, -1).doit()
     exp(x) - 1
 
+    7. The lower terminal can be customized:
+    >>> FractionalDerivative(sp.exp(x), x, -1, x0=2).doit()
+    exp(x) - exp(2)
+
     See Also
     ========
     sympy.core.function.Derivative : Classical integer-order differential operator.
     """
     is_Derivative = True
 
-    def __new__(cls, expr, x, alpha):
+    def __new__(cls, expr, x, alpha, x0=0):
         expr = sp.sympify(expr)
         x = sp.sympify(x)
         alpha = sp.sympify(alpha).nsimplify()
+        x0 = sp.sympify(x0).nsimplify()
 
         if not isinstance(x, sp.Symbol):
             raise ValueError("The second argument must be a symbol.")
@@ -171,7 +176,23 @@ class FractionalDerivative(sp.Expr):
         if alpha.is_number and alpha.is_finite is not True:
             raise ValueError("The operator order must be finite.")
 
-        return sp.Expr.__new__(cls, expr, x, alpha)
+        if x0.has(x):
+            raise ValueError("The lower bound x0 must not depend on x.")
+        if (
+            x0.is_real is False
+            or x0.is_finite is False
+            or (
+                x0.is_number
+                and (x0.is_real is not True or x0.is_finite is not True)
+            )
+        ):
+            raise ValueError("The lower bound x0 must be finite and real.")
+
+        # Keep the original three-argument structure when x0 is zero so that
+        # existing expressions retain their representation and hash.
+        if x0 == 0:
+            return sp.Expr.__new__(cls, expr, x, alpha)
+        return sp.Expr.__new__(cls, expr, x, alpha, x0)
 
     @property
     def expr(self): return self.args[0]
@@ -179,6 +200,8 @@ class FractionalDerivative(sp.Expr):
     def x(self): return self.args[1]
     @property
     def alpha(self): return self.args[2]
+    @property
+    def x0(self): return self.args[3] if len(self.args) == 4 else sp.S.Zero
 
     def _eval_subs(self, old, new):
         if old == self.x:
@@ -189,12 +212,18 @@ class FractionalDerivative(sp.Expr):
         return None
 
     def eval_at(self, point, n=15):
-        """Numerically evaluate the operator at a positive real point.
+        """Numerically evaluate the operator at a real point greater than ``x0``.
 
         Closed forms are evaluated by SymPy. Otherwise, the implementation
         evaluates the Riemann-Liouville derivative or integral definition.
         """
         point = sp.sympify(point)
+        validation_dps = n + 10
+        point_value = _real_mpf(point, validation_dps, "The evaluation point")
+        x0_value = _real_mpf(self.x0, validation_dps, "The lower bound x0")
+        if point_value <= x0_value:
+            raise ValueError("The evaluation point must be greater than x0.")
+
         resolved = self.doit()
         if resolved != self:
             return resolved.subs(self.x, point).evalf(n)
@@ -205,10 +234,14 @@ class FractionalDerivative(sp.Expr):
 
         with mpmath.workprec(prec + 32):
             x_value = _real_mpf(point, dps, "The evaluation point")
+            x0_value = _real_mpf(self.x0, dps, "The lower bound x0")
             alpha_value = _real_mpf(self.alpha, dps, "The operator order")
 
-            if x_value <= 0:
-                raise ValueError("The evaluation point must be positive for lower bound 0.")
+            if x_value <= x0_value:
+                raise ValueError("The evaluation point must be greater than x0.")
+
+            interval = x_value - x0_value
+
             def fractional_integral(expression, order):
                 numeric_function = sp.lambdify(
                     self.x,
@@ -216,13 +249,13 @@ class FractionalDerivative(sp.Expr):
                     modules="mpmath",
                 )
 
-                # t = x*(1-u**(1/order)) removes the endpoint power kernel.
+                # t = x - (x-x0)*u**(1/order) removes the endpoint power kernel.
                 def transformed_integrand(u):
-                    t = x_value * (1 - u ** (1 / order))
+                    t = x_value - interval * u ** (1 / order)
                     return _mpmath_value(numeric_function(t), dps)
 
                 return (
-                    x_value**order
+                    interval**order
                     / (order * mpmath.gamma(order))
                     * mpmath.quad(transformed_integrand, [0, 1])
                 )
@@ -243,11 +276,14 @@ class FractionalDerivative(sp.Expr):
             # Riemann-Liouville = Caputo + lower-boundary contributions.
             boundary = mpmath.mpmathify(0)
             for k in range(n):
-                derivative_at_zero = sp.diff(self.expr, self.x, k).subs(self.x, 0)
-                initial_value = _mpmath_value(derivative_at_zero, dps)
+                derivative_at_x0 = sp.diff(self.expr, self.x, k).subs(
+                    self.x,
+                    self.x0,
+                )
+                initial_value = _mpmath_value(derivative_at_x0, dps)
                 boundary += (
                     initial_value
-                    * x_value ** (k - alpha_value)
+                    * interval ** (k - alpha_value)
                     / mpmath.gamma(k + 1 - alpha_value)
                 )
 
@@ -259,6 +295,8 @@ class FractionalDerivative(sp.Expr):
         expr = self.expr.doit(**hints)
         x = self.x
         alpha = self.alpha
+        x0 = self.x0
+        distance = x - x0
 
         if alpha == 0:
             return expr
@@ -273,31 +311,49 @@ class FractionalDerivative(sp.Expr):
             t = sp.Dummy('t', positive=True)
             integral = sp.Integral(
                 (x - t)**(order - 1) * expr.xreplace({x: t}),
-                (t, 0, x),
+                (t, x0, x),
             ) / sp.gamma(order)
             if alpha.is_number:
                 return sp.simplify(integral.doit(**hints))
             return integral
 
-        # A constant c has D^alpha(c) = c*x^(-alpha)/Gamma(1-alpha).
+        # A constant c has D^alpha(c) = c*(x-x0)^(-alpha)/Gamma(1-alpha).
         if not expr.has(x):
-            return expr * x**(-alpha) / sp.gamma(1 - alpha)
+            return expr * distance**(-alpha) / sp.gamma(1 - alpha)
 
         # 1. Linearity: Addition
         if expr.is_Add:
-            return sp.Add(*[FractionalDerivative(arg, x, alpha).doit(**hints) for arg in expr.args])
+            return sp.Add(*[
+                FractionalDerivative(arg, x, alpha, x0).doit(**hints)
+                for arg in expr.args
+            ])
 
         # 2. Linearity: Multiplication by Constants
         if expr.is_Mul:
             coeff, remaining = expr.as_independent(x)
             if coeff != 1:
-                return coeff * FractionalDerivative(remaining, x, alpha).doit(**hints)
+                return coeff * FractionalDerivative(
+                    remaining,
+                    x,
+                    alpha,
+                    x0,
+                ).doit(**hints)
 
-        # 3. Power Rule: x^m
+        # Translate ordinary polynomials into powers of (x-x0). This preserves
+        # the exact power rule for a custom lower terminal.
+        if x0 != 0 and expr.is_polynomial(x):
+            shifted_x = sp.Dummy('shifted_x', positive=True)
+            shifted_expr = sp.expand(expr.xreplace({x: shifted_x + x0}))
+            shifted_operator = FractionalDerivative(shifted_expr, shifted_x, alpha)
+            shifted_result = shifted_operator.doit(**hints)
+            if not shifted_result.has(FractionalDerivative):
+                return sp.simplify(shifted_result.xreplace({shifted_x: distance}))
+
+        # 3. Power Rule: (x-x0)^m
         m = sp.Wild('m', exclude=[x])
-        match_pow = expr.match(x**m)
+        match_pow = expr.match(distance**m)
         
-        if expr == x:
+        if expr == distance:
             match_pow = {m: sp.S.One}
 
         if match_pow:
@@ -305,10 +361,14 @@ class FractionalDerivative(sp.Expr):
             integrable = sp.ask(sp.Q.positive(sp.re(m_val) + 1))
             if integrable is False:
                 raise ValueError(
-                    "A power x**m must satisfy re(m) > -1 for the "
-                    "Riemann-Liouville integral with lower bound 0."
+                    "A shifted power (x-x0)**m must satisfy re(m) > -1 for the "
+                    "Riemann-Liouville integral at its lower bound."
                 )
-            return (sp.gamma(m_val + 1) / sp.gamma(m_val + 1 - alpha)) * (x**(m_val - alpha))
+            return (
+                sp.gamma(m_val + 1)
+                / sp.gamma(m_val + 1 - alpha)
+                * distance**(m_val - alpha)
+            )
 
         # 4. Exponential Rule: exp(b*x)
         b = sp.Wild('b', exclude=[x])
@@ -320,8 +380,11 @@ class FractionalDerivative(sp.Expr):
             if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             b_val = match_exp[b]
-            return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper(
-                [sp.S.One], [1 - alpha], b_val*x
+            return (
+                sp.exp(b_val*x0)
+                * distance**(-alpha)
+                / sp.gamma(1 - alpha)
+                * sp.hyper([sp.S.One], [1 - alpha], b_val*distance)
             )
 
         # 5. Sine Rule: sin(w*x)
@@ -334,8 +397,29 @@ class FractionalDerivative(sp.Expr):
             if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             w_val = match_sin[w]
-            arg_hyper = -(w_val**2)*(x**2)/4
-            return (w_val * x**(1 - alpha) / sp.gamma(2 - alpha)) * sp.hyper([sp.S.One], [1 - alpha/2, sp.Rational(3,2) - alpha/2], arg_hyper)
+            arg_hyper = -(w_val**2)*(distance**2)/4
+            shifted_sine = (
+                w_val * distance**(1 - alpha)
+                / sp.gamma(2 - alpha)
+                * sp.hyper(
+                    [sp.S.One],
+                    [1 - alpha/2, sp.Rational(3, 2) - alpha/2],
+                    arg_hyper,
+                )
+            )
+            shifted_cosine = (
+                distance**(-alpha)
+                / sp.gamma(1 - alpha)
+                * sp.hyper(
+                    [sp.S.One],
+                    [sp.Rational(1, 2) - alpha/2, 1 - alpha/2],
+                    arg_hyper,
+                )
+            )
+            return (
+                sp.cos(w_val*x0) * shifted_sine
+                + sp.sin(w_val*x0) * shifted_cosine
+            )
 
         # 6. Cosine Rule: cos(w*x)
         match_cos = expr.match(sp.cos(w*x))
@@ -346,8 +430,29 @@ class FractionalDerivative(sp.Expr):
             if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             w_val = match_cos[w]
-            arg_hyper = -(w_val**2)*(x**2)/4
-            return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper([sp.S.One], [sp.Rational(1,2) - alpha/2, 1 - alpha/2], arg_hyper)
+            arg_hyper = -(w_val**2)*(distance**2)/4
+            shifted_sine = (
+                w_val * distance**(1 - alpha)
+                / sp.gamma(2 - alpha)
+                * sp.hyper(
+                    [sp.S.One],
+                    [1 - alpha/2, sp.Rational(3, 2) - alpha/2],
+                    arg_hyper,
+                )
+            )
+            shifted_cosine = (
+                distance**(-alpha)
+                / sp.gamma(1 - alpha)
+                * sp.hyper(
+                    [sp.S.One],
+                    [sp.Rational(1, 2) - alpha/2, 1 - alpha/2],
+                    arg_hyper,
+                )
+            )
+            return (
+                sp.cos(w_val*x0) * shifted_cosine
+                - sp.sin(w_val*x0) * shifted_sine
+            )
 
         return self
 
@@ -375,7 +480,11 @@ class _FractionalDerivativeAt(sp.Expr):
     @property
     def free_symbols(self):
         derivative = self.derivative
-        parameters = derivative.expr.free_symbols | derivative.alpha.free_symbols
+        parameters = (
+            derivative.expr.free_symbols
+            | derivative.alpha.free_symbols
+            | derivative.x0.free_symbols
+        )
         return (parameters - {derivative.x}) | self.point.free_symbols
 
     def doit(self, **hints):
