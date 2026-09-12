@@ -31,6 +31,22 @@ def test_fractional_derivative_powers():
     fd_pow = FractionalDerivative(x**3, x, alpha).doit()
     assert fd_pow == (gamma(4) / gamma(sp.Rational(7, 2))) * x**(sp.Rational(5, 2))
 
+def test_fractional_derivative_exponential_rl_lower_bound_zero():
+    x = sp.Symbol('x', positive=True)
+    alpha = sp.Rational(1, 2)
+    result = FractionalDerivative(sp.exp(2*x), x, alpha).doit()
+    expected = x**(-alpha) / gamma(1 - alpha) * hyper(
+        [sp.S.One], [1 - alpha], 2*x
+    )
+    assert result == expected
+
+    # Verify it directly from the Riemann-Liouville definition for alpha = 1/2.
+    t = sp.Symbol('t', positive=True)
+    fractional_integral = sp.integrate(sp.exp(2*t) / sp.sqrt(x - t), (t, 0, x))
+    rl_definition = sp.diff(fractional_integral, x) / sp.sqrt(sp.pi)
+    assert sp.simplify(sp.hyperexpand(result) - rl_definition) == 0
+    assert FractionalDerivative(sp.exp(2*x), x, 1).doit() == 2 * sp.exp(2*x)
+
 def test_fractional_derivative_trig():
     x = sp.Symbol('x')
     alpha = sp.Rational(1, 2)
@@ -43,5 +59,6 @@ def test_fractional_derivative_evalf():
     x = sp.Symbol('x')
     fd = FractionalDerivative(x**3 + sp.exp(2*x), x, 0.5)
     val_15 = fd.subs(x, 1.5).evalf(15)
+    expected = sp.Float('33.43465145054713231326955', 15)
     assert isinstance(val_15, sp.Float)
-    assert abs(val_15 - 33.3803544767048) < 1e-10
+    assert abs(val_15 - expected) < 1e-10

@@ -42,7 +42,11 @@ class FractionalDerivative(sp.Expr):
 
     * **Exponentials ($e^{bx}$):**
       .. math::
-          D^\alpha (e^{bx}) = b^\alpha e^{bx}
+          D^\alpha (e^{bx}) = \frac{x^{-\alpha}}{\Gamma(1-\alpha)}
+          \,{}_1F_1\left(1; 1-\alpha; bx\right)
+      for non-integer $\alpha$. The boundary contribution at $x=0$ is essential;
+      consequently, $b^\alpha e^{bx}$ is not the Riemann-Liouville derivative
+      with the fixed lower bound used by this class.
 
     * **Trigonometric Functions ($\sin(wx)$ and $\cos(wx)$):**
       Due to the lower bound at $a=0$, analytical solutions require the use 
@@ -70,22 +74,22 @@ class FractionalDerivative(sp.Expr):
     1. Half-derivative ($\alpha = 1/2$) of a power function:
     >>> fd_pow = FractionalDerivative(x**2, x, 0.5)
     >>> fd_pow.doit()
-    8*x**(3/2)/(3*sp.sqrt(sp.pi))
+    8*x**(3/2)/(3*sqrt(pi))
 
     2. Evaluating the memory effect on a constant (f(x) = 1):
     >>> fd_const = FractionalDerivative(1, x, 0.5)
     >>> fd_const.doit()
-    1/(sp.sqrt(sp.pi)*sp.sqrt(x))
+    1/(sqrt(pi)*sqrt(x))
 
     3. Exact hypergeometric form for trigonometric functions:
     >>> fd_trig = FractionalDerivative(sp.sin(x), x, 0.5)
     >>> fd_trig.doit()
-    2*sp.sqrt(x)*sp.hyper((1,), (3/4, 5/4), -x**2/4)/sp.sqrt(sp.pi)
+    2*sqrt(x)*hyper((1,), (3/4, 5/4), -x**2/4)/sqrt(pi)
 
     4. High-precision numerical evaluation (.evalf()) inheriting mpmath:
     >>> expr_eval = FractionalDerivative(sp.exp(x), x, 0.5).subs(x, 1)
     >>> expr_eval.evalf(25)
-    4.493289641172216174625244
+    2.854887835850994517897617
 
     See Also
     ========
@@ -156,7 +160,9 @@ class FractionalDerivative(sp.Expr):
             
         if match_exp:
             b_val = match_exp[b]
-            return (b_val**alpha) * sp.exp(b_val*x)
+            return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper(
+                [sp.S.One], [1 - alpha], b_val*x
+            )
 
         # 5. Sine Rule: sin(w*x)
         w = sp.Wild('w', exclude=[x])
