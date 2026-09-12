@@ -15,6 +15,15 @@ def rl_half_from_definition(expr, x):
     return sp.diff(fractional_integral, x) / sp.sqrt(sp.pi)
 
 
+def rl_integral_from_definition(expr, x, beta):
+    """Construct the Riemann-Liouville integral of positive order beta."""
+    t = sp.Symbol('t', positive=True)
+    return sp.integrate(
+        (x - t)**(beta - 1) * expr.subs(x, t),
+        (t, 0, x),
+    ) / gamma(beta)
+
+
 def test_fractional_derivative_creation():
     x = sp.Symbol('x')
     fd = FractionalDerivative(x**2, x, 0.5)
@@ -22,10 +31,10 @@ def test_fractional_derivative_creation():
 
     with pytest.raises(ValueError):
         FractionalDerivative(x**2, 2, 0.5)
-    with pytest.raises(ValueError, match='nonnegative real'):
-        FractionalDerivative(x**2, x, -sp.Rational(1, 2))
-    with pytest.raises(ValueError, match='nonnegative real'):
-        FractionalDerivative(x**2, x, sp.I)
+    assert FractionalDerivative(x**2, x, -sp.Rational(1, 2)).alpha == -sp.Rational(1, 2)
+    assert FractionalDerivative(x**2, x, sp.I).alpha == sp.I
+    with pytest.raises(ValueError, match='order must be finite'):
+        FractionalDerivative(x**2, x, sp.oo)
 
 
 def test_symbolic_integer_order_remains_classical():
@@ -109,6 +118,39 @@ def test_power_rule_rejects_nonintegrable_lower_bound():
             FractionalDerivative(x**exponent, x, alpha).doit()
 
 
+def test_negative_orders_are_fractional_integrals():
+    x = sp.Symbol('x', positive=True)
+    beta = sp.Rational(1, 2)
+
+    cases = (
+        sp.Integer(2),
+        x**2,
+        sp.exp(2*x),
+        sp.sin(3*x),
+        sp.cos(3*x),
+    )
+    for expr in cases:
+        result = FractionalDerivative(expr, x, -beta).doit()
+        definition = rl_integral_from_definition(expr, x, beta)
+        assert sp.simplify(sp.hyperexpand(result) - definition) == 0
+
+
+def test_negative_integer_orders_use_definite_integrals_from_zero():
+    x = sp.Symbol('x', positive=True)
+
+    exponential_integral = FractionalDerivative(sp.exp(2*x), x, -1).doit()
+    sine_integral = FractionalDerivative(sp.sin(3*x), x, -1).doit()
+    cosine_integral = FractionalDerivative(sp.cos(3*x), x, -1).doit()
+
+    assert sp.simplify(sp.hyperexpand(exponential_integral) - (sp.exp(2*x) - 1)/2) == 0
+    assert sp.simplify(sp.hyperexpand(sine_integral) - (1 - sp.cos(3*x))/3) == 0
+    assert sp.simplify(sp.hyperexpand(cosine_integral) - sp.sin(3*x)/3) == 0
+
+    n = sp.Symbol('n', integer=True, negative=True)
+    symbolic_integral = FractionalDerivative(sp.exp(x), x, n).doit()
+    assert sp.simplify(sp.hyperexpand(symbolic_integral.subs(n, -1)) - (sp.exp(x) - 1)) == 0
+
+
 def test_fractional_derivative_exponential_rl_lower_bound_zero():
     x = sp.Symbol('x', positive=True)
     alpha = sp.Rational(1, 2)
@@ -188,6 +230,32 @@ def test_numerical_fallback_includes_boundary_terms():
     assert abs(fd.eval_at(1, 40) - expected) < sp.Float('1e-38')
 
 
+@pytest.mark.parametrize(
+    ('alpha', 'expected'),
+    (
+        (
+            -sp.Rational(1, 2),
+            '0.54016438577284366558644214937484146535362756688707',
+        ),
+        (
+            -sp.Integer(1),
+            '0.31026830172338110180815242316539650757450938883245',
+        ),
+        (
+            -sp.Rational(3, 2),
+            '0.16361075978445647055255649378045243288477242986673',
+        ),
+    ),
+)
+def test_numerical_fallback_for_negative_order(alpha, expected):
+    x = sp.Symbol('x', positive=True)
+    fd = FractionalDerivative(sp.sin(x**2), x, alpha)
+    expected = sp.Float(expected, 50)
+
+    assert abs(fd.eval_at(1, 40) - expected) < sp.Float('1e-38')
+    assert abs(fd.subs(x, 1).evalf(40) - expected) < sp.Float('1e-38')
+
+
 def test_numerical_fallback_domain_errors():
     x = sp.Symbol('x', positive=True)
     fd = FractionalDerivative(sp.sin(x**2), x, sp.Rational(1, 2))
@@ -197,5 +265,6 @@ def test_numerical_fallback_domain_errors():
     with pytest.raises(ValueError, match='evaluation point must be positive'):
         fd.eval_at(-1)
 
-    with pytest.raises(ValueError, match='nonnegative real'):
-        FractionalDerivative(sp.sin(x**2), x, -sp.Rational(1, 2))
+    complex_order = FractionalDerivative(sp.sin(x**2), x, sp.I)
+    with pytest.raises(ValueError, match='finite real'):
+        complex_order.eval_at(1)

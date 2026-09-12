@@ -33,11 +33,15 @@ def main():
     # Integer orders fall back to SymPy's ordinary derivative.
     integer_order = fractional_derivative(sp.exp(2 * x), x, sp.Integer(1))
 
+    # Negative orders are Riemann-Liouville fractional integrals.
+    first_integral = fractional_derivative(sp.exp(2 * x), x, sp.Integer(-1))
+
     # Basic symbolic checks.
     assert constant == 1 / sp.sqrt(sp.pi * x)
     assert power == 8 * x ** sp.Rational(3, 2) / (3 * sp.sqrt(sp.pi))
     assert sp.simplify(composite - (power + exponential + sine)) == 0
     assert integer_order == 2 * sp.exp(2 * x)
+    assert sp.simplify(sp.hyperexpand(first_integral) - (sp.exp(2*x) - 1)/2) == 0
 
     # The half-derivative of exp(2x) also has a closed form involving erf.
     exponential_closed_form = (
@@ -54,6 +58,9 @@ def main():
     unsupported = FractionalDerivative(sp.sin(x**2), x, alpha)
     print("\nNumerical fallback for D^(1/2) sin(x**2) at x = 1:")
     sp.pprint(unsupported.eval_at(1, 30))
+
+    print("\nNegative half-order (fractional integral) at x = 1:")
+    sp.pprint(FractionalDerivative(sp.sin(x**2), x, -alpha).eval_at(1, 30))
 
     print("\nAll symbolic and numerical checks passed.")
 

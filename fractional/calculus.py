@@ -49,7 +49,8 @@ class FractionalDerivative(sp.Expr):
     ========================
     Unlike classical calculus, where the order of differentiation $n$ belongs
     to positive integers ($\mathbb{N}$), fractional calculus generalizes the
-    differential operator here to a nonnegative real order $\alpha$.
+    operator to arbitrary orders. Positive orders represent derivatives and
+    negative real orders represent Riemann-Liouville fractional integrals.
 
     This subroutine uses the **Riemann-Liouville (R-L)** definition with a fixed lower
     bound at $a = 0$. For a given function $f(x)$ and order $\alpha > 0$ 
@@ -57,6 +58,13 @@ class FractionalDerivative(sp.Expr):
 
     .. math::
         D^\alpha f(x) = \frac{1}{\Gamma(n - \alpha)} \frac{d^n}{dx^n} \int_{0}^{x} (x - t)^{n - \alpha - 1} f(t) \, dt
+
+    For a negative real order $\alpha=-\beta$, with $\beta>0$, the same
+    operator represents the Riemann-Liouville fractional integral:
+
+    .. math::
+        D^{-\beta} f(x) = I^\beta f(x)
+        = \frac{1}{\Gamma(\beta)} \int_0^x (x-t)^{\beta-1}f(t)\,dt
 
     Where $\Gamma(z)$ is the Euler Gamma function, which extends factorials to real numbers.
 
@@ -104,9 +112,11 @@ class FractionalDerivative(sp.Expr):
     x : Symbol
         The independent variable with respect to which differentiation is performed.
     alpha : Expr or number
-        The nonnegative real order of the derivative. Abstract symbols are
-        accepted, but symbolic closed forms that are singular at integer
-        parameters require assumptions that establish a non-integer order.
+        The operator order. Positive values represent derivatives, zero is the
+        identity, and negative real values represent fractional integrals.
+        Abstract and complex symbolic orders are accepted, but symbolic closed
+        forms that are singular at integer parameters require sufficient
+        assumptions.
 
     Examples
     ========
@@ -140,6 +150,10 @@ class FractionalDerivative(sp.Expr):
     >>> fd_numeric.eval_at(1, 15)
     1.11361910109605
 
+    6. A negative order represents a fractional integral:
+    >>> FractionalDerivative(sp.exp(x), x, -1).doit().expand(func=True)
+    exp(x) - 1
+
     See Also
     ========
     sympy.core.function.Derivative : Classical integer-order differential operator.
@@ -154,10 +168,8 @@ class FractionalDerivative(sp.Expr):
         if not isinstance(x, sp.Symbol):
             raise ValueError("The second argument must be a symbol.")
 
-        if alpha.is_real is False or alpha.is_negative is True:
-            raise ValueError("The derivative order must be a nonnegative real value.")
         if alpha.is_number and alpha.is_finite is not True:
-            raise ValueError("The derivative order must be a finite real value.")
+            raise ValueError("The operator order must be finite.")
 
         return sp.Expr.__new__(cls, expr, x, alpha)
 
@@ -177,11 +189,10 @@ class FractionalDerivative(sp.Expr):
         return None
 
     def eval_at(self, point, n=15):
-        """Numerically evaluate the derivative at a positive real point.
+        """Numerically evaluate the operator at a positive real point.
 
         Closed forms are evaluated by SymPy. Otherwise, the implementation
-        evaluates the Riemann-Liouville definition through its equivalent
-        Caputo integral plus the required lower-boundary terms.
+        evaluates the Riemann-Liouville derivative or integral definition.
         """
         point = sp.sympify(point)
         resolved = self.doit()
@@ -194,12 +205,34 @@ class FractionalDerivative(sp.Expr):
 
         with mpmath.workprec(prec + 32):
             x_value = _real_mpf(point, dps, "The evaluation point")
-            alpha_value = _real_mpf(self.alpha, dps, "The derivative order")
+            alpha_value = _real_mpf(self.alpha, dps, "The operator order")
 
             if x_value <= 0:
                 raise ValueError("The evaluation point must be positive for lower bound 0.")
-            if alpha_value <= 0:
-                raise ValueError("The derivative order must be positive.")
+            def fractional_integral(expression, order):
+                numeric_function = sp.lambdify(
+                    self.x,
+                    expression,
+                    modules="mpmath",
+                )
+
+                # t = x*(1-u**(1/order)) removes the endpoint power kernel.
+                def transformed_integrand(u):
+                    t = x_value * (1 - u ** (1 / order))
+                    return _mpmath_value(numeric_function(t), dps)
+
+                return (
+                    x_value**order
+                    / (order * mpmath.gamma(order))
+                    * mpmath.quad(transformed_integrand, [0, 1])
+                )
+
+            if alpha_value < 0:
+                result = fractional_integral(self.expr, -alpha_value)
+                return _sympy_float(result, prec)
+            if alpha_value == 0:
+                value = self.expr.subs(self.x, point)
+                return sp.N(value, prec_to_dps(prec))
 
             n = int(mpmath.ceil(alpha_value))
             beta = n - alpha_value
@@ -219,19 +252,7 @@ class FractionalDerivative(sp.Expr):
                 )
 
             nth_derivative = sp.diff(self.expr, self.x, n)
-            numeric_derivative = sp.lambdify(self.x, nth_derivative, modules="mpmath")
-
-            # t = x*(1-u**(1/beta)) removes the integrable endpoint singularity.
-            def transformed_integrand(u):
-                t = x_value * (1 - u ** (1 / beta))
-                return _mpmath_value(numeric_derivative(t), dps)
-
-            integral = (
-                x_value**beta
-                / beta
-                * mpmath.quad(transformed_integrand, [0, 1])
-            )
-            result = boundary + integral / mpmath.gamma(beta)
+            result = boundary + fractional_integral(nth_derivative, beta)
             return _sympy_float(result, prec)
 
     def doit(self, **hints):
@@ -242,11 +263,12 @@ class FractionalDerivative(sp.Expr):
         if alpha == 0:
             return expr
         if alpha.is_integer is True:
-            if alpha.is_nonnegative is not True:
+            if alpha.is_nonnegative is True:
+                if alpha.is_number:
+                    return sp.diff(expr, x, int(alpha))
+                return sp.Derivative(expr, (x, alpha), evaluate=False)
+            if alpha.is_negative is not True:
                 return self
-            if alpha.is_number:
-                return sp.diff(expr, x, int(alpha))
-            return sp.Derivative(expr, (x, alpha), evaluate=False)
 
         # A constant c has D^alpha(c) = c*x^(-alpha)/Gamma(1-alpha).
         if not expr.has(x):
@@ -286,7 +308,7 @@ class FractionalDerivative(sp.Expr):
             match_exp = {b: sp.S.One}
             
         if match_exp:
-            if alpha.is_integer is not False:
+            if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             b_val = match_exp[b]
             return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper(
@@ -300,7 +322,7 @@ class FractionalDerivative(sp.Expr):
             match_sin = {w: sp.S.One}
             
         if match_sin:
-            if alpha.is_integer is not False:
+            if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             w_val = match_sin[w]
             arg_hyper = -(w_val**2)*(x**2)/4
@@ -312,7 +334,7 @@ class FractionalDerivative(sp.Expr):
             match_cos = {w: sp.S.One}
             
         if match_cos:
-            if alpha.is_integer is not False:
+            if alpha.is_integer is not False and alpha.is_negative is not True:
                 return self
             w_val = match_cos[w]
             arg_hyper = -(w_val**2)*(x**2)/4
