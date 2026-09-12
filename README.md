@@ -4,8 +4,8 @@ A native, high-precision symbolic Python package extending **SymPy** to compute 
 
 ## Features
 - **Pure Symbolic Matching (`.doit()`)**: Computes analytical exact fractional derivatives for power functions (\(x^m\), including negative exponents), exponentials (\(e^{bx}\)) using the confluent hypergeometric function (₁F₁), and trigonometric functions (\(\sin(wx), \cos(wx)\)) using generalized hypergeometric functions (₁F₂).
-- **Linearity & Constants Preservation**: Handles nested algebraic structures seamlessly.
-- **Arbitrary Precision Numerical Fallback (`.evalf()`)**: Inherits `mpmath` under the hood to evaluate solutions numerically with exact bit-depth control using Grünwald-Letnikov approximations.
+- **Linearity & Constants Preservation**: Handles sums, scalar factors, and arbitrary constants.
+- **Precision-Controlled Numerical Fallback**: Evaluates smooth expressions without a symbolic rule directly from the Riemann-Liouville definition using adaptive `mpmath` quadrature. It supports both `.eval_at(...)` and SymPy's `.subs(...).evalf(...)` workflow.
 
 ## Installation & Development
 
@@ -20,9 +20,15 @@ pip install -e ".[dev]"
 ```
 
 ## Running Tests
-Ensure everything works perfectly with:
+Run the complete test suite with:
 ```bash
 pytest
+```
+
+Run the executable demonstration with:
+
+```bash
+python examples/demo.py
 ```
 
 ## Quick Example
@@ -48,3 +54,23 @@ D_{0+}^{\alpha} e^{bx}
 
 The simpler expression \(b^\alpha e^{bx}\) belongs to a different choice of
 fractional operator or boundary conditions and is not used here.
+
+## Numerical Fallback
+
+When no symbolic rule matches, evaluate at a positive real point with the
+requested number of decimal digits:
+
+```python
+fd = FractionalDerivative(sp.sin(x**2), x, sp.Rational(1, 2))
+
+print(fd.eval_at(1, 30))
+# 1.11361910109605500220019376399
+
+print(fd.subs(x, 1).evalf(30))
+# 1.11361910109605500220019376399
+```
+
+The numerical fallback uses the equivalent Caputo integral together with the
+lower-boundary terms required by the Riemann-Liouville definition. It currently
+requires a positive real order, a positive real evaluation point, and finite
+initial derivatives at the lower bound.

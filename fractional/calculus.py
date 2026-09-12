@@ -1,5 +1,45 @@
 import sympy as sp
 import mpmath
+from sympy.core.evalf import dps_to_prec, prec_to_dps
+
+
+def _real_mpf(value, dps, name):
+    """Convert a finite real SymPy value to an mpmath number."""
+    numeric = sp.N(value, dps)
+    if (
+        numeric.is_number is not True
+        or numeric.is_real is not True
+        or numeric.is_finite is not True
+    ):
+        raise ValueError(f"{name} must be a finite real number.")
+    return mpmath.mpf(str(numeric))
+
+
+def _mpmath_value(value, dps):
+    """Convert a real or complex numeric value without passing through float."""
+    if isinstance(value, (mpmath.mpf, mpmath.mpc)):
+        return value
+
+    numeric = sp.N(value, dps)
+    if numeric.is_number is not True or numeric.is_finite is not True:
+        raise ValueError("The expression could not be evaluated numerically.")
+    if numeric.is_real is True:
+        return mpmath.mpf(str(numeric))
+
+    real, imag = numeric.as_real_imag()
+    return mpmath.mpc(str(sp.N(real, dps)), str(sp.N(imag, dps)))
+
+
+def _sympy_float(value, prec):
+    """Convert an mpmath value to a SymPy number at binary precision ``prec``."""
+    value = mpmath.mpmathify(value)
+    if isinstance(value, mpmath.mpc):
+        return (
+            sp.Float(value.real, precision=prec)
+            + sp.I * sp.Float(value.imag, precision=prec)
+        )
+    return sp.Float(value, precision=prec)
+
 
 class FractionalDerivative(sp.Expr):
     r"""
@@ -38,7 +78,8 @@ class FractionalDerivative(sp.Expr):
     * **Powers ($x^m$):**
       .. math::
           D^\alpha (x^m) = \frac{\Gamma(m+1)}{\Gamma(m + 1 - \alpha)} x^{m - \alpha}
-      *(Supports negative exponents $m$ provided that $m+1 \notin \mathbb{Z}_{\le 0}$)*
+      The classical integral additionally requires convergence at the lower
+      bound (for example, $\operatorname{Re}(m)>-1$).
 
     * **Exponentials ($e^{bx}$):**
       .. math::
@@ -86,10 +127,16 @@ class FractionalDerivative(sp.Expr):
     >>> fd_trig.doit()
     2*sqrt(x)*hyper((1,), (3/4, 5/4), -x**2/4)/sqrt(pi)
 
-    4. High-precision numerical evaluation (.evalf()) inheriting mpmath:
+    4. High-precision numerical evaluation of a resolved closed form:
     >>> expr_eval = FractionalDerivative(sp.exp(x), x, 0.5).subs(x, 1)
     >>> expr_eval.evalf(25)
     2.854887835850994517897617
+
+    5. Numerical evaluation from the Riemann-Liouville definition when no
+       symbolic rule is available:
+    >>> fd_numeric = FractionalDerivative(sp.sin(x**2), x, 0.5)
+    >>> fd_numeric.eval_at(1, 15)
+    1.11361910109605
 
     See Also
     ========
@@ -119,7 +166,66 @@ class FractionalDerivative(sp.Expr):
             resolved = self.doit()
             if resolved != self:
                 return resolved.subs(old, new)
+            return _FractionalDerivativeAt(self, new)
         return None
+
+    def eval_at(self, point, n=15):
+        """Numerically evaluate the derivative at a positive real point.
+
+        Closed forms are evaluated by SymPy. Otherwise, the implementation
+        evaluates the Riemann-Liouville definition through its equivalent
+        Caputo integral plus the required lower-boundary terms.
+        """
+        point = sp.sympify(point)
+        resolved = self.doit()
+        if resolved != self:
+            return resolved.subs(self.x, point).evalf(n)
+        return self._eval_at(point, dps_to_prec(n))
+
+    def _eval_at(self, point, prec):
+        dps = prec_to_dps(prec) + 10
+
+        with mpmath.workprec(prec + 32):
+            x_value = _real_mpf(point, dps, "The evaluation point")
+            alpha_value = _real_mpf(self.alpha, dps, "The derivative order")
+
+            if x_value <= 0:
+                raise ValueError("The evaluation point must be positive for lower bound 0.")
+            if alpha_value <= 0:
+                raise ValueError("The derivative order must be positive.")
+
+            n = int(mpmath.ceil(alpha_value))
+            beta = n - alpha_value
+            if beta == 0:
+                value = sp.diff(self.expr, self.x, n).subs(self.x, point)
+                return sp.N(value, prec_to_dps(prec))
+
+            # Riemann-Liouville = Caputo + lower-boundary contributions.
+            boundary = mpmath.mpmathify(0)
+            for k in range(n):
+                derivative_at_zero = sp.diff(self.expr, self.x, k).subs(self.x, 0)
+                initial_value = _mpmath_value(derivative_at_zero, dps)
+                boundary += (
+                    initial_value
+                    * x_value ** (k - alpha_value)
+                    / mpmath.gamma(k + 1 - alpha_value)
+                )
+
+            nth_derivative = sp.diff(self.expr, self.x, n)
+            numeric_derivative = sp.lambdify(self.x, nth_derivative, modules="mpmath")
+
+            # t = x*(1-u**(1/beta)) removes the integrable endpoint singularity.
+            def transformed_integrand(u):
+                t = x_value * (1 - u ** (1 / beta))
+                return _mpmath_value(numeric_derivative(t), dps)
+
+            integral = (
+                x_value**beta
+                / beta
+                * mpmath.quad(transformed_integrand, [0, 1])
+            )
+            result = boundary + integral / mpmath.gamma(beta)
+            return _sympy_float(result, prec)
 
     def doit(self, **hints):
         expr = self.expr.doit(**hints)
@@ -130,6 +236,10 @@ class FractionalDerivative(sp.Expr):
             return expr
         if alpha.is_Integer and alpha > 0:
             return sp.diff(expr, x, int(alpha))
+
+        # A constant c has D^alpha(c) = c*x^(-alpha)/Gamma(1-alpha).
+        if not expr.has(x):
+            return expr * x**(-alpha) / sp.gamma(1 - alpha)
 
         # 1. Linearity: Addition
         if expr.is_Add:
@@ -191,26 +301,37 @@ class FractionalDerivative(sp.Expr):
         resolved = self.doit()
         if resolved != self:
             return resolved.evalf(prec)
+        return self
 
+
+class _FractionalDerivativeAt(sp.Expr):
+    """Internal unevaluated substitution used by numerical fallback."""
+
+    def __new__(cls, derivative, point):
+        return sp.Expr.__new__(cls, derivative, sp.sympify(point))
+
+    @property
+    def derivative(self):
+        return self.args[0]
+
+    @property
+    def point(self):
+        return self.args[1]
+
+    @property
+    def free_symbols(self):
+        derivative = self.derivative
+        parameters = derivative.expr.free_symbols | derivative.alpha.free_symbols
+        return (parameters - {derivative.x}) | self.point.free_symbols
+
+    def doit(self, **hints):
+        resolved = self.derivative.doit(**hints)
+        if resolved != self.derivative:
+            return resolved.subs(self.derivative.x, self.point).doit(**hints)
+        return self
+
+    def _eval_evalf(self, prec):
         try:
-            x_val = mpmath.mpf(self.x.evalf(prec))
-            alpha_val = mpmath.mpf(self.alpha.evalf(prec))
-            
-            # Grünwald-Letnikov numerical approximation as a fallback
-            def gl_approximation(f, x, alpha, N=100):
-                h = x / N
-                suma = mpmath.mpf(0)
-                binom = 1
-                for k in range(N):
-                    if k > 0:
-                        binom = binom * (alpha - k + 1) / k
-                    term_x = x - k * h
-                    f_val = mpmath.mpf(self.expr.subs(self.x, float(term_x)).evalf(prec))
-                    suma += ((-1)**k) * binom * f_val
-                return suma / (h**alpha)
-
-            with mpmath.workprec(prec):
-                result = gl_approximation(self.expr, x_val, alpha_val)
-                return sp.Float(result, prec)
-        except (TypeError, ValueError):
+            return self.derivative._eval_at(self.point, prec)
+        except (TypeError, ValueError, ZeroDivisionError):
             return self
