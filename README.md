@@ -1,4 +1,4 @@
-# SymPy Fractional Calculus Extension 🧠📊
+# Fractional 🧠📊
 
 A native, high-precision symbolic Python package extending **SymPy** to compute fractional derivatives using the **Riemann-Liouville** formulation (with a lower bound of a=0).
 
@@ -12,8 +12,8 @@ A native, high-precision symbolic Python package extending **SymPy** to compute 
 Clone the repository and install it in editable mode with development dependencies:
 
 ```bash
-git clone https://github.com
-cd sympy-fractional
+git clone https://github.com/isantosruiz/fractional.git
+cd fractional
 python -m venv .venv
 source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -28,7 +28,7 @@ pytest
 ## Quick Example
 ```python
 import sympy as sp
-from sympy_fractional import FractionalDerivative
+from fractional import FractionalDerivative
 
 x = sp.Symbol('x')
 # Half-derivative of x^2 + sin(x)

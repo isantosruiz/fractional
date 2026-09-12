@@ -1,8 +1,8 @@
 import sympy as sp
-from sympy.core.backend import mpmath
+import mpmath
 
 class FractionalDerivative(sp.Expr):
-    """
+    r"""
     Symbolically represents the Riemann-Liouville fractional derivative.
 
     Mathematical Explanation
@@ -64,7 +64,7 @@ class FractionalDerivative(sp.Expr):
     Examples
     ========
     >>> import sympy as sp
-    >>> from sympy_fractional import FractionalDerivative
+    >>> from fractional import FractionalDerivative
     >>> x = sp.Symbol('x')
 
     1. Half-derivative ($\alpha = 1/2$) of a power function:
@@ -104,11 +104,18 @@ class FractionalDerivative(sp.Expr):
         return sp.Expr.__new__(cls, expr, x, alpha)
 
     @property
-    def expr(self): return self.args
+    def expr(self): return self.args[0]
     @property
-    def x(self): return self.args
+    def x(self): return self.args[1]
     @property
-    def alpha(self): return self.args
+    def alpha(self): return self.args[2]
+
+    def _eval_subs(self, old, new):
+        if old == self.x:
+            resolved = self.doit()
+            if resolved != self:
+                return resolved.subs(old, new)
+        return None
 
     def doit(self, **hints):
         expr = self.expr.doit(**hints)

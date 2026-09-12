@@ -2,7 +2,7 @@ import pytest
 import sympy as sp
 from sympy.functions.special.gamma_functions import gamma
 from sympy.functions.special.hyper import hyper
-from sympy_fractional import FractionalDerivative
+from fractional import FractionalDerivative
 
 def test_fractional_derivative_creation():
     x = sp.Symbol('x')

@@ -3,10 +3,10 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "sympy-fractional"
+name = "fractional"
 version = "0.1.0"
 authors = [
-  { name="Your Name", email="your_email@example.com" },
+  { name="isantosruiz" },
 ]
 description = "A native fractional calculus extension for SymPy implementing Riemann-Liouville symbolic subroutines."
 readme = "README.md"
@@ -20,6 +20,10 @@ classifiers = [
 dependencies = [
     "sympy>=1.12",
 ]
+
+[project.urls]
+Repository = "https://github.com/isantosruiz/fractional"
+Issues = "https://github.com/isantosruiz/fractional/issues"
 
 [project.optional-dependencies]
 dev = [
