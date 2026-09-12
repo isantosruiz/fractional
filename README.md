@@ -55,6 +55,20 @@ D_{0+}^{\alpha} e^{bx}
 The simpler expression \(b^\alpha e^{bx}\) belongs to a different choice of
 fractional operator or boundary conditions and is not used here.
 
+## Mathematical Domain
+
+The operator supports nonnegative real orders. A concrete integer order is
+evaluated with SymPy's ordinary derivative. An integer-valued symbolic order is
+kept as an unevaluated classical `Derivative`, so substituting a specific
+integer later remains mathematically correct.
+
+For the power rule \(x^m\), the defining integral at the fixed lower bound zero
+requires \(\operatorname{Re}(m)>-1\). A power known not to satisfy that
+condition raises `ValueError` instead of returning a value obtained only by
+analytic continuation. When the integrality of a symbolic order is unknown,
+closed forms with singular integer parameters are deliberately left
+unevaluated.
+
 ## Numerical Fallback
 
 When no symbolic rule matches, evaluate at a positive real point with the

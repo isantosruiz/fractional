@@ -47,9 +47,9 @@ class FractionalDerivative(sp.Expr):
 
     Mathematical Explanation
     ========================
-    Unlike classical calculus, where the order of differentiation $n$ belongs 
-    to positive integers ($\mathbb{N}$), fractional calculus generalizes the 
-    differential operator to an arbitrary order $\alpha \in \mathbb{C}$ (or $\mathbb{R}$).
+    Unlike classical calculus, where the order of differentiation $n$ belongs
+    to positive integers ($\mathbb{N}$), fractional calculus generalizes the
+    differential operator here to a nonnegative real order $\alpha$.
 
     This subroutine uses the **Riemann-Liouville (R-L)** definition with a fixed lower
     bound at $a = 0$. For a given function $f(x)$ and order $\alpha > 0$ 
@@ -104,7 +104,9 @@ class FractionalDerivative(sp.Expr):
     x : Symbol
         The independent variable with respect to which differentiation is performed.
     alpha : Expr or number
-        The order of the derivative. Can be an integer, rational, or abstract symbol.
+        The nonnegative real order of the derivative. Abstract symbols are
+        accepted, but symbolic closed forms that are singular at integer
+        parameters require assumptions that establish a non-integer order.
 
     Examples
     ========
@@ -148,10 +150,15 @@ class FractionalDerivative(sp.Expr):
         expr = sp.sympify(expr)
         x = sp.sympify(x)
         alpha = sp.sympify(alpha).nsimplify()
-        
+
         if not isinstance(x, sp.Symbol):
             raise ValueError("The second argument must be a symbol.")
-            
+
+        if alpha.is_real is False or alpha.is_negative is True:
+            raise ValueError("The derivative order must be a nonnegative real value.")
+        if alpha.is_number and alpha.is_finite is not True:
+            raise ValueError("The derivative order must be a finite real value.")
+
         return sp.Expr.__new__(cls, expr, x, alpha)
 
     @property
@@ -234,8 +241,12 @@ class FractionalDerivative(sp.Expr):
 
         if alpha == 0:
             return expr
-        if alpha.is_Integer and alpha > 0:
-            return sp.diff(expr, x, int(alpha))
+        if alpha.is_integer is True:
+            if alpha.is_nonnegative is not True:
+                return self
+            if alpha.is_number:
+                return sp.diff(expr, x, int(alpha))
+            return sp.Derivative(expr, (x, alpha), evaluate=False)
 
         # A constant c has D^alpha(c) = c*x^(-alpha)/Gamma(1-alpha).
         if not expr.has(x):
@@ -260,6 +271,12 @@ class FractionalDerivative(sp.Expr):
 
         if match_pow:
             m_val = match_pow[m]
+            integrable = sp.ask(sp.Q.positive(sp.re(m_val) + 1))
+            if integrable is False:
+                raise ValueError(
+                    "A power x**m must satisfy re(m) > -1 for the "
+                    "Riemann-Liouville integral with lower bound 0."
+                )
             return (sp.gamma(m_val + 1) / sp.gamma(m_val + 1 - alpha)) * (x**(m_val - alpha))
 
         # 4. Exponential Rule: exp(b*x)
@@ -269,6 +286,8 @@ class FractionalDerivative(sp.Expr):
             match_exp = {b: sp.S.One}
             
         if match_exp:
+            if alpha.is_integer is not False:
+                return self
             b_val = match_exp[b]
             return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper(
                 [sp.S.One], [1 - alpha], b_val*x
@@ -281,6 +300,8 @@ class FractionalDerivative(sp.Expr):
             match_sin = {w: sp.S.One}
             
         if match_sin:
+            if alpha.is_integer is not False:
+                return self
             w_val = match_sin[w]
             arg_hyper = -(w_val**2)*(x**2)/4
             return (w_val * x**(1 - alpha) / sp.gamma(2 - alpha)) * sp.hyper([sp.S.One], [1 - alpha/2, sp.Rational(3,2) - alpha/2], arg_hyper)
@@ -291,6 +312,8 @@ class FractionalDerivative(sp.Expr):
             match_cos = {w: sp.S.One}
             
         if match_cos:
+            if alpha.is_integer is not False:
+                return self
             w_val = match_cos[w]
             arg_hyper = -(w_val**2)*(x**2)/4
             return (x**(-alpha) / sp.gamma(1 - alpha)) * sp.hyper([sp.S.One], [sp.Rational(1,2) - alpha/2, 1 - alpha/2], arg_hyper)

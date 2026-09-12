@@ -22,6 +22,38 @@ def test_fractional_derivative_creation():
 
     with pytest.raises(ValueError):
         FractionalDerivative(x**2, 2, 0.5)
+    with pytest.raises(ValueError, match='nonnegative real'):
+        FractionalDerivative(x**2, x, -sp.Rational(1, 2))
+    with pytest.raises(ValueError, match='nonnegative real'):
+        FractionalDerivative(x**2, x, sp.I)
+
+
+def test_symbolic_integer_order_remains_classical():
+    x = sp.Symbol('x')
+    n = sp.Symbol('n', integer=True, nonnegative=True)
+    result = FractionalDerivative(x**4, x, n).doit()
+
+    assert result == sp.Derivative(x**4, (x, n), evaluate=False)
+    assert result.subs(n, 0).doit() == x**4
+    assert result.subs(n, 2).doit() == 12*x**2
+    assert result.subs(n, 5).doit() == 0
+
+
+def test_unknown_symbolic_order_avoids_singular_closed_forms():
+    x = sp.Symbol('x')
+    alpha = sp.Symbol('alpha', positive=True)
+    fd = FractionalDerivative(sp.exp(x), x, alpha)
+
+    assert fd.doit() == fd
+    assert fd.subs(alpha, 1).doit() == sp.exp(x)
+
+    noninteger_alpha = sp.Symbol(
+        'noninteger_alpha',
+        positive=True,
+        integer=False,
+    )
+    result = FractionalDerivative(sp.exp(x), x, noninteger_alpha).doit()
+    assert result.has(sp.hyper)
 
 
 def test_fractional_derivative_constants():
@@ -63,6 +95,18 @@ def test_fractional_derivative_powers():
     definition = rl_half_from_definition(x**sp.Rational(5, 2), x)
     result = FractionalDerivative(x**sp.Rational(5, 2), x, alpha).doit()
     assert sp.simplify(result - definition) == 0
+
+
+def test_power_rule_rejects_nonintegrable_lower_bound():
+    x = sp.Symbol('x', positive=True)
+    alpha = sp.Rational(1, 2)
+
+    # x**(-1/2) is locally integrable at zero and its half derivative is zero.
+    assert FractionalDerivative(x**(-alpha), x, alpha).doit() == 0
+
+    for exponent in (-1, -sp.Rational(3, 2), -2):
+        with pytest.raises(ValueError, match=r're\(m\) > -1'):
+            FractionalDerivative(x**exponent, x, alpha).doit()
 
 
 def test_fractional_derivative_exponential_rl_lower_bound_zero():
@@ -153,6 +197,5 @@ def test_numerical_fallback_domain_errors():
     with pytest.raises(ValueError, match='evaluation point must be positive'):
         fd.eval_at(-1)
 
-    negative_order = FractionalDerivative(sp.sin(x**2), x, -sp.Rational(1, 2))
-    with pytest.raises(ValueError, match='derivative order must be positive'):
-        negative_order.eval_at(1)
+    with pytest.raises(ValueError, match='nonnegative real'):
+        FractionalDerivative(sp.sin(x**2), x, -sp.Rational(1, 2))
