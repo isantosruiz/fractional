@@ -1,4 +1,4 @@
-# Fractional 🧠📊
+# Fractional
 
 A native, high-precision symbolic Python package extending **SymPy** to compute fractional derivatives and integrals using the **Riemann-Liouville** formulation. The lower bound `x0` is configurable and defaults to zero.
 
