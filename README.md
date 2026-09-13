@@ -3,9 +3,9 @@
 A native, high-precision symbolic Python package extending **SymPy** to compute fractional derivatives and integrals using the **Riemann-Liouville** formulation. The lower bound `x0` is configurable and defaults to zero.
 
 ## Features
-- **Pure Symbolic Matching (`.doit()`)**: Computes analytical exact fractional derivatives for power functions (\(x^m\), including negative exponents), exponentials (\(e^{bx}\)) using the confluent hypergeometric function (₁F₁), and trigonometric functions (\(\sin(wx), \cos(wx)\)) using generalized hypergeometric functions (₁F₂).
+- **Pure Symbolic Matching (`.doit()`)**: Computes analytical exact fractional derivatives for power functions ($`x^m`$, including negative exponents), exponentials ($`e^{bx}`$) using the confluent hypergeometric function (₁F₁), and trigonometric functions ($`\sin(wx), \cos(wx)`$) using generalized hypergeometric functions (₁F₂).
 - **Configurable Lower Bound**: Accepts `x0` as the lower terminal while preserving `x0=0` as the backward-compatible default.
-- **Negative Orders**: Interprets \(D^{-\beta}_{x_0+}\) as the Riemann-Liouville fractional integral \(I^\beta_{x_0+}\), symbolically and numerically.
+- **Negative Orders**: Interprets $`D^{-\beta}_{x_0+}`$ as the Riemann-Liouville fractional integral $`I^\beta_{x_0+}`$, symbolically and numerically.
 - **Linearity & Constants Preservation**: Handles sums, scalar factors, and arbitrary constants.
 - **Precision-Controlled Numerical Fallback**: Evaluates smooth expressions without a symbolic rule directly from the Riemann-Liouville definition using adaptive `mpmath` quadrature. It supports both `.eval_at(...)` and SymPy's `.subs(...).evalf(...)` workflow.
 
@@ -53,16 +53,16 @@ print(first_integral.doit())
 # exp(2*x)/2 - exp(2)/2
 ```
 
-For a non-integer order \(\alpha\), the exponential rule respects the selected
+For a non-integer order $`\alpha`$, the exponential rule respects the selected
 lower bound:
 
-\[
+$$
 D_{x_0+}^{\alpha} e^{bx}
 = \frac{e^{b x_0}(x-x_0)^{-\alpha}}{\Gamma(1-\alpha)}
 {}_1F_1\left(1;1-\alpha;b(x-x_0)\right).
-\]
+$$
 
-The simpler expression \(b^\alpha e^{bx}\) belongs to a different choice of
+The simpler expression $`b^\alpha e^{bx}`$ belongs to a different choice of
 fractional operator or boundary conditions and is not used here.
 
 ## Mathematical Domain
@@ -70,11 +70,11 @@ fractional operator or boundary conditions and is not used here.
 For real orders, a positive value represents a derivative, zero is the identity,
 and a negative value represents a fractional integral:
 
-\[
+$$
 D^{-\beta}_{x_0+}f(x)=I^\beta_{x_0+}f(x)
-=\frac{1}{\Gamma(\beta)}\int_{x_0}^x(x-t)^{\beta-1}f(t)\,dt,
+=\frac{1}{\Gamma(\beta)}\int_{x_0}^x(x-t)^{\beta-1}f(t)\mathrm{d}t,
 \qquad \beta>0.
-\]
+$$
 
 A concrete positive integer order is evaluated with SymPy's ordinary
 derivative. An integer-valued symbolic order known to be nonnegative is kept as
@@ -92,8 +92,8 @@ FractionalDerivative(sp.exp(2*x), x, -1, x0=1).doit()
 # exp(2*x)/2 - exp(2)/2
 ```
 
-For the shifted power rule \((x-x_0)^m\), the defining integral at the lower
-terminal requires \(\operatorname{Re}(m)>-1\). A power known not to satisfy that
+For the shifted power rule $`(x-x_0)^m`$, the defining integral at the lower
+terminal requires $`\operatorname{Re}(m)>-1`$. A power known not to satisfy that
 condition raises `ValueError` instead of returning a value obtained only by
 analytic continuation. When the integrality of a symbolic order is unknown,
 closed forms with singular integer parameters are deliberately left
