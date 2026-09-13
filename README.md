@@ -93,7 +93,7 @@ FractionalDerivative(sp.exp(2*x), x, -1, x0=1).doit()
 ```
 
 For the shifted power rule $`(x-x_0)^m`$, the defining integral at the lower
-terminal requires $`\operatorname{Re}(m)>-1`$. A power known not to satisfy that
+terminal requires $`\mathrm{Re}(m)>-1`$. A power known not to satisfy that
 condition raises `ValueError` instead of returning a value obtained only by
 analytic continuation. When the integrality of a symbolic order is unknown,
 closed forms with singular integer parameters are deliberately left
